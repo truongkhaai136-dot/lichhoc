@@ -197,11 +197,10 @@
 
 <script>
     let schedules = [];
-    let timeouts = {};
-    let beginSoundUrl = null;
-    let endSoundUrl = null;
+    let schedulerWorker; // Biến để giữ Worker
 
     // === CÁC HÀM XỬ LÝ POP-UP (MODAL) ===
+    // (Giữ nguyên các hàm showDetails, closeModal, toggleChecklistItem)
     function showDetails(id) {
         const schedule = schedules.find(s => s.id === id);
         if (!schedule) return;
@@ -251,6 +250,9 @@
     }
 
     // === CÁC HÀM XỬ LÝ ÂM THANH ===
+    // (Giữ nguyên các hàm setupAudioHandlers, playSound)
+    let beginSoundUrl = null;
+    let endSoundUrl = null;
     function setupAudioHandlers() {
         document.getElementById('beginSound').addEventListener('change', event => {
             const file = event.target.files[0]; if (file) { if (beginSoundUrl) URL.revokeObjectURL(beginSoundUrl); beginSoundUrl = URL.createObjectURL(file); }
@@ -259,10 +261,35 @@
             const file = event.target.files[0]; if (file) { if (endSoundUrl) URL.revokeObjectURL(endSoundUrl); endSoundUrl = URL.createObjectURL(file); }
         });
     }
-    
     function playSound(url) { if (url) { new Audio(url).play(); } }
 
-    // === LƯU TRỮ, TẢI, VÀ XỬ LÝ DỮ LIỆU (ĐẦY ĐỦ) ===
+    // === LƯU TRỮ, TẢI, VÀ XỬ LÝ DỮ LIỆU (ĐÃ CẬP NHẬT ĐỂ DÙNG WORKER) ===
+    
+    // Hàm thiết lập Worker và lắng nghe tin nhắn
+    function setupWorker() {
+        if (window.Worker) {
+            schedulerWorker = new Worker('scheduler.worker.js');
+            
+            // Lắng nghe tin nhắn từ Worker
+            schedulerWorker.onmessage = function(e) {
+                const scheduleId = e.data;
+                console.log(`Worker báo: đến giờ cho lịch học ${scheduleId}`);
+                startSession(scheduleId); // Gọi hàm startSession khi nhận được tin nhắn
+            };
+        } else {
+            console.error("Trình duyệt của bạn không hỗ trợ Web Workers. Chức năng nền sẽ không hoạt động.");
+            alert("Trình duyệt của bạn không hỗ trợ Web Workers, chức năng hẹn giờ ở tab khác sẽ không hoạt động.");
+        }
+    }
+
+    // Hàm gửi danh sách lịch học cập nhật cho Worker
+    function updateWorker() {
+        if (schedulerWorker) {
+            // Gửi một bản sao của danh sách lịch học để tránh lỗi
+            schedulerWorker.postMessage(JSON.parse(JSON.stringify(schedules)));
+        }
+    }
+
     function saveSchedules() {
         localStorage.setItem('mySmartScheduler', JSON.stringify(schedules));
     }
@@ -270,34 +297,25 @@
     function saveAndRender() {
         saveSchedules();
         renderSchedules();
+        updateWorker(); // Cập nhật Worker mỗi khi có thay đổi
     }
 
     function loadAndProcessSchedules() {
         const savedSchedules = localStorage.getItem('mySmartScheduler');
         schedules = savedSchedules ? JSON.parse(savedSchedules) : [];
         
-        Object.values(timeouts).forEach(clearTimeout);
-        timeouts = {};
-
+        // Dọn dẹp các timeout cũ (nếu có) và cập nhật trạng thái
+        // Việc này đảm bảo các lịch học đã qua sẽ được đánh dấu là "done"
+        const now = new Date();
         schedules.forEach(schedule => {
-            const startDateTime = new Date(schedule.startDateTimeString);
             const endDateTime = new Date(schedule.endDateTimeString);
-            const now = new Date();
-            
-            if (startDateTime > now && schedule.status === 'waiting') {
-                const timeToOpen = startDateTime.getTime() - now.getTime();
-                timeouts[schedule.id] = setTimeout(() => startSession(schedule.id), timeToOpen);
-            } else if (schedule.status === 'running') {
-                const remainingTime = (endDateTime.getTime() - now.getTime()) / 1000;
-                if (remainingTime > 0) {
-                    startCountdown(schedule.id, remainingTime);
-                } else {
-                    schedule.status = 'done';
-                }
+            if (schedule.status !== 'done' && now >= endDateTime) {
+                schedule.status = 'done';
             }
         });
-        
+
         renderSchedules();
+        updateWorker(); // Gửi danh sách cho Worker khi tải trang
     }
     
     function exportSchedulesToFile() {
@@ -322,11 +340,10 @@
         reader.onload = function(e) {
             try {
                 const importedSchedules = JSON.parse(e.target.result);
-                // Validate basic structure before overwriting
                 if (Array.isArray(importedSchedules)) {
                     schedules = importedSchedules;
-                    saveSchedules();
-                    loadAndProcessSchedules();
+                    saveSchedules(); // Lưu trước
+                    loadAndProcessSchedules(); // Sau đó xử lý và gửi cho worker
                     alert(`Đã nhập thành công ${schedules.length} lịch học!`);
                 } else {
                     throw new Error("Invalid format");
@@ -339,7 +356,7 @@
         event.target.value = null;
     }
 
-    // === CÁC HÀM XỬ LÝ LỊCH HỌC (ĐẦY ĐỦ) ===
+    // === CÁC HÀM XỬ LÝ LỊCH HỌC (ĐÃ CẬP NHẬT) ===
     function addSchedule() {
         const linksValue = document.getElementById('studyLinks').value.trim();
         const notes = document.getElementById('notes').value.trim();
@@ -383,10 +400,7 @@
 
         schedules.push(newSchedule);
         
-        const timeToOpen = startDateTime.getTime() - new Date().getTime();
-        if (timeToOpen > 0) {
-            timeouts[newSchedule.id] = setTimeout(() => startSession(newSchedule.id), timeToOpen);
-        }
+        // ĐÃ XÓA setTimeout ở đây. Worker sẽ lo việc này.
 
         saveAndRender();
         
@@ -394,9 +408,7 @@
     }
 
     function deleteSchedule(id) {
-        clearTimeout(timeouts[id]);
-        delete timeouts[id];
-
+        // ĐÃ XÓA clearTimeout ở đây.
         const scheduleIndex = schedules.findIndex(s => s.id === id);
         if (scheduleIndex > -1) {
             clearInterval(schedules[scheduleIndex].countdownInterval);
@@ -408,7 +420,8 @@
     
     function startSession(id) {
         const schedule = schedules.find(s => s.id === id);
-        if (schedule && schedule.links) {
+        // Kiểm tra lại trạng thái để tránh mở lại các lịch đã hoàn thành
+        if (schedule && schedule.status === 'waiting') {
             playSound(beginSoundUrl);
             schedule.links.forEach(link => window.open(link, '_blank'));
             schedule.status = 'running';
@@ -425,7 +438,7 @@
         clearInterval(schedule.countdownInterval);
         let timeLeft = Math.round(seconds);
 
-        updateCountdownDisplay(id, timeLeft); // Cập nhật ngay lập tức
+        updateCountdownDisplay(id, timeLeft); 
 
         schedule.countdownInterval = setInterval(() => {
             timeLeft--;
@@ -435,23 +448,27 @@
                 clearInterval(schedule.countdownInterval);
                 playSound(endSoundUrl);
                 schedule.status = 'done';
-                saveAndRender();
+                saveAndRender(); // Cập nhật lại giao diện và gửi cho worker
             }
         }, 1000);
     }
     
-    // === CÁC HÀM CẬP NHẬT GIAO DIỆN (ĐẦY ĐỦ) ===
+    // === CÁC HÀM CẬP NHẬT GIAO DIỆN (Giữ nguyên) ===
     function updateCountdownDisplay(id, timeLeft) {
         const itemElement = document.getElementById(id);
         if (!itemElement) return;
         const statusElement = itemElement.querySelector('.status');
+        if(!statusElement) return; // Kiểm tra nếu status element không tồn tại
+
         if (timeLeft <= 0) {
             statusElement.innerHTML = "✅ Hoàn thành!";
         } else {
             const h = Math.floor(timeLeft / 3600).toString().padStart(2, '0');
             const m = Math.floor((timeLeft % 3600) / 60).toString().padStart(2, '0');
             const s = (timeLeft % 60).toString().padStart(2, '0');
+            itemElement.classList.remove('done', 'expired', 'waiting');
             itemElement.classList.add('running');
+            statusElement.style.color = '#28a745';
             statusElement.innerHTML = `${h}:${m}:${s}`;
         }
     }
@@ -478,19 +495,32 @@
             
             let statusHTML = '';
             
-            if (schedule.status === 'running' && now < end) {
+            // Cập nhật trạng thái trước khi render
+            if (schedule.status !== 'done' && now >= end) {
+                schedule.status = 'done';
+            }
+
+            // Xóa hết các class trạng thái cũ
+            item.classList.remove('running', 'done', 'expired');
+
+            if (schedule.status === 'running') {
                  item.classList.add('running');
                  const remainingTime = (end.getTime() - now.getTime()) / 1000;
-                 startCountdown(schedule.id, remainingTime); // Khởi động lại countdown
-                 statusHTML = `<div class="status" style="color: #28a745;"></div>`;
-            } else if (schedule.status === 'done' || now >= end) {
-                schedule.status = 'done';
+                 if (remainingTime > 0) {
+                    statusHTML = `<div class="status"></div>`; // Countdown sẽ điền vào đây
+                    startCountdown(schedule.id, remainingTime);
+                 } else {
+                    schedule.status = 'done'; // Chuyển sang done nếu đã hết giờ
+                 }
+            }
+            
+            if (schedule.status === 'done') {
                 item.classList.add('done');
                 statusHTML = `<div class="status" style="color: #17a2b8;">✅ Hoàn thành!</div>`;
-            } else if (start < now) {
+            } else if (schedule.status === 'waiting' && start < now) {
                 item.classList.add('expired');
                 statusHTML = `<div class="status" style="color: #6c757d;">Đã qua</div>`;
-            } else {
+            } else if (schedule.status === 'waiting') {
                 statusHTML = `<div class="status" style="color: var(--secondary-color);">Sắp tới</div>`;
             }
             
@@ -510,12 +540,21 @@
                 </div>
             `;
             listElement.appendChild(item);
+
+            // Kích hoạt lại countdown nếu cần
+            if (item.classList.contains('running')) {
+                const remainingTime = (end.getTime() - now.getTime()) / 1000;
+                if (remainingTime > 0) {
+                    startCountdown(schedule.id, remainingTime);
+                }
+            }
         });
     }
 
     // --- KHỞI CHẠY ---
     document.addEventListener('DOMContentLoaded', () => {
         setupAudioHandlers();
+        setupWorker(); // Khởi tạo Worker
         loadAndProcessSchedules();
         window.onclick = function(event) {
             if (event.target == document.getElementById('detailsModal')) {
@@ -526,4 +565,5 @@
 </script>
 
 </body>
+
 </html>
