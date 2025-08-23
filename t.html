@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kế Hoạch Học Tập Toàn Diện</title>
+    <style>
+        :root {
+            --primary-color: #0056b3;
+            --secondary-color: #007bff;
+            --border-color: #ddd;
+            --background-color: #f0f2f5;
+            --card-background: white;
+            --text-color: #1c1e21;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+        }
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 30px;
+        }
+        .form-container, .schedule-list-container {
+            background: var(--card-background);
+            padding: 25px 30px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 500px;
+            box-sizing: border-box;
+        }
+        h1, h2 {
+            text-align: center;
+            color: var(--primary-color);
+        }
+        .input-group {
+            margin-bottom: 20px;
+        }
+        label {
+            font-weight: 600;
+            display: block;
+            margin-bottom: 8px;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-sizing: border-box;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+        input[type="file"] { padding: 5px; }
+        button#addBtn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+        button#addBtn:hover { transform: translateY(-2px); }
+        #scheduleList {
+            list-style-type: none;
+            padding: 0;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        .schedule-item {
+            background: #f9f9f9;
+            padding: 15px;
+            border-left: 5px solid var(--secondary-color);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .schedule-item.expired { border-left-color: #6c757d; background-color: #e9ecef; }
+        .schedule-item.running { border-left-color: #28a745; }
+        .schedule-item.done { border-left-color: #17a2b8; }
+        .schedule-item .info { flex-grow: 1; overflow: hidden; }
+        .schedule-item .datetime { font-weight: bold; font-size: 1.1em; }
+        .schedule-item .links-summary { font-size: 0.9em; color: #555; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .schedule-item .actions { display: flex; align-items: center; gap: 10px; }
+        .schedule-item .status { font-weight: bold; min-width: 100px; text-align: right; }
+        .schedule-item .action-btn { background: none; border: 1px solid var(--border-color); border-radius: 50%; width: 32px; height: 32px; cursor: pointer; }
+        .schedule-item .delete-btn { background-color: #dc3545; color: white; border: none; }
+        
+        /* === MODAL / POP-UP STYLE === */
+        .modal {
+            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);
+            justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background-color: #fefefe; margin: auto; padding: 25px; border-radius: 10px; width: 90%; max-width: 600px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: fadeIn 0.3s;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        .modal-header h3 { margin: 0; color: var(--primary-color); }
+        .close-btn { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-body h4 { margin-top: 20px; margin-bottom: 10px; }
+        .modal-body .links-list, .modal-body .checklist { list-style: none; padding-left: 0; }
+        .modal-body .links-list li { margin-bottom: 5px; word-break: break-all; }
+        .modal-body .notes { background: #f9f9f9; padding: 10px; border-radius: 5px; white-space: pre-wrap; }
+        .modal-body .checklist-item { display: flex; align-items: center; margin-bottom: 8px; }
+        .modal-body .checklist-item input { width: auto; margin-right: 10px; }
+        .modal-body .checklist-item label { text-decoration: none; }
+        .modal-body .checklist-item input:checked + label { text-decoration: line-through; color: #888; }
+        @keyframes fadeIn { from {opacity: 0; transform: scale(0.9);} to {opacity: 1; transform: scale(1);} }
+        
+        /* === BACKUP SECTION === */
+        .backup-section { margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; display: flex; gap: 15px; }
+        .backup-section button { width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 8px; border: none; }
+        #exportBtn { background-color: #17a2b8; color: white; }
+        #importBtn { background-color: #28a745; color: white; }
+        #importFile { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+
+    <div class="form-container">
+        <h1>Lập Kế Hoạch Học Tập 🗓️</h1>
+        <div class="input-group">
+            <label for="studyLinks">Link bài học (mỗi link một dòng):</label>
+            <textarea id="studyLinks" placeholder="https://youtube.com/..." required></textarea>
+        </div>
+        <div class="input-group">
+            <label for="notes">Ghi chú:</label>
+            <textarea id="notes" placeholder="Nội dung chính, mục tiêu cần đạt..."></textarea>
+        </div>
+        <div class="input-group">
+            <label for="checklist">Checklist công việc (mỗi mục một dòng):</label>
+            <textarea id="checklist" placeholder="Đọc chương 1\nLàm bài tập A\nXem lại video..."></textarea>
+        </div>
+        <div class="input-group">
+            <label for="openDate">Ngày học:</label>
+            <input type="date" id="openDate" required>
+        </div>
+        <div class="input-group">
+            <label for="openTime">Giờ bắt đầu:</label>
+            <input type="time" id="openTime" required>
+        </div>
+        <div class="input-group">
+            <label for="endTime">Giờ kết thúc:</label>
+            <input type="time" id="endTime" required>
+        </div>
+        <div class="input-group">
+            <label for="beginSound">🎵 Âm báo bắt đầu:</label>
+            <input type="file" id="beginSound" accept="audio/*">
+        </div>
+        <div class="input-group">
+            <label for="endSound">🎵 Âm báo kết thúc:</label>
+            <input type="file" id="endSound" accept="audio/*">
+        </div>
+        <button id="addBtn" onclick="addSchedule()">Thêm Lịch Học</button>
+        
+        <div class="backup-section">
+            <button id="exportBtn" onclick="exportSchedulesToFile()">📥 Xuất File (.json)</button>
+            <button id="importBtn" onclick="document.getElementById('importFile').click()">📤 Nhập File (.json)</button>
+            <input type="file" id="importFile" accept=".json" onchange="importSchedulesFromFile(event)">
+        </div>
+    </div>
+
+    <div class="schedule-list-container">
+        <h2>Danh Sách Lịch Học</h2>
+        <ul id="scheduleList"></ul>
+    </div>
+</div>
+
+<div id="detailsModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="modalTitle">Chi tiết lịch học</h3>
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+        </div>
+        <div id="modalBody" class="modal-body"></div>
+    </div>
+</div>
+
+
+<script>
+    let schedules = [];
+    let timeouts = {};
+    let beginSoundUrl = null;
+    let endSoundUrl = null;
+
+    // === CÁC HÀM XỬ LÝ POP-UP (MODAL) ===
+    function showDetails(id) {
+        const schedule = schedules.find(s => s.id === id);
+        if (!schedule) return;
+
+        const modal = document.getElementById('detailsModal');
+        const modalBody = document.getElementById('modalBody');
+        
+        const start = new Date(schedule.startDateTimeString);
+        document.getElementById('modalTitle').innerText = `Lịch học ngày ${start.toLocaleDateString('vi-VN')}`;
+
+        let linksHTML = '<h4>🔗 Links</h4><ul class="links-list">';
+        schedule.links.forEach(link => {
+            linksHTML += `<li><a href="${link}" target="_blank">${link}</a></li>`;
+        });
+        linksHTML += '</ul>';
+
+        const notesHTML = `<h4>📝 Ghi chú</h4><div class="notes">${schedule.notes || "Không có ghi chú."}</div>`;
+
+        let checklistHTML = '<h4>✅ Checklist</h4><div class="checklist">';
+        if (schedule.checklist && schedule.checklist.length > 0) {
+            schedule.checklist.forEach((item, index) => {
+                checklistHTML += `
+                    <div class="checklist-item">
+                        <input type="checkbox" id="item-${id}-${index}" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem('${id}', ${index})">
+                        <label for="item-${id}-${index}">${item.text}</label>
+                    </div>`;
+            });
+        } else {
+            checklistHTML += "Không có checklist.";
+        }
+        checklistHTML += '</div>';
+
+        modalBody.innerHTML = linksHTML + notesHTML + checklistHTML;
+        modal.style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('detailsModal').style.display = 'none';
+    }
+
+    function toggleChecklistItem(scheduleId, itemIndex) {
+        const schedule = schedules.find(s => s.id === scheduleId);
+        if (schedule && schedule.checklist[itemIndex]) {
+            schedule.checklist[itemIndex].done = !schedule.checklist[itemIndex].done;
+            saveAndRender();
+        }
+    }
+
+    // === CÁC HÀM XỬ LÝ ÂM THANH ===
+    function setupAudioHandlers() {
+        document.getElementById('beginSound').addEventListener('change', event => {
+            const file = event.target.files[0]; if (file) { if (beginSoundUrl) URL.revokeObjectURL(beginSoundUrl); beginSoundUrl = URL.createObjectURL(file); }
+        });
+        document.getElementById('endSound').addEventListener('change', event => {
+            const file = event.target.files[0]; if (file) { if (endSoundUrl) URL.revokeObjectURL(endSoundUrl); endSoundUrl = URL.createObjectURL(file); }
+        });
+    }
+    
+    function playSound(url) { if (url) { new Audio(url).play(); } }
+
+    // === LƯU TRỮ, TẢI, VÀ XỬ LÝ DỮ LIỆU (ĐẦY ĐỦ) ===
+    function saveSchedules() {
+        localStorage.setItem('mySmartScheduler', JSON.stringify(schedules));
+    }
+    
+    function saveAndRender() {
+        saveSchedules();
+        renderSchedules();
+    }
+
+    function loadAndProcessSchedules() {
+        const savedSchedules = localStorage.getItem('mySmartScheduler');
+        schedules = savedSchedules ? JSON.parse(savedSchedules) : [];
+        
+        Object.values(timeouts).forEach(clearTimeout);
+        timeouts = {};
+
+        schedules.forEach(schedule => {
+            const startDateTime = new Date(schedule.startDateTimeString);
+            const endDateTime = new Date(schedule.endDateTimeString);
+            const now = new Date();
+            
+            if (startDateTime > now && schedule.status === 'waiting') {
+                const timeToOpen = startDateTime.getTime() - now.getTime();
+                timeouts[schedule.id] = setTimeout(() => startSession(schedule.id), timeToOpen);
+            } else if (schedule.status === 'running') {
+                const remainingTime = (endDateTime.getTime() - now.getTime()) / 1000;
+                if (remainingTime > 0) {
+                    startCountdown(schedule.id, remainingTime);
+                } else {
+                    schedule.status = 'done';
+                }
+            }
+        });
+        
+        renderSchedules();
+    }
+    
+    function exportSchedulesToFile() {
+        if (schedules.length === 0) {
+            alert("Không có lịch học nào để xuất!");
+            return;
+        }
+        const dataStr = JSON.stringify(schedules, null, 2);
+        const dataBlob = new Blob([dataStr], {type: "application/json"});
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lich_hoc_${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function importSchedulesFromFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const importedSchedules = JSON.parse(e.target.result);
+                // Validate basic structure before overwriting
+                if (Array.isArray(importedSchedules)) {
+                    schedules = importedSchedules;
+                    saveSchedules();
+                    loadAndProcessSchedules();
+                    alert(`Đã nhập thành công ${schedules.length} lịch học!`);
+                } else {
+                    throw new Error("Invalid format");
+                }
+            } catch (error) {
+                alert("Lỗi: File không hợp lệ hoặc bị hỏng.");
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = null;
+    }
+
+    // === CÁC HÀM XỬ LÝ LỊCH HỌC (ĐẦY ĐỦ) ===
+    function addSchedule() {
+        const linksValue = document.getElementById('studyLinks').value.trim();
+        const notes = document.getElementById('notes').value.trim();
+        const checklistValue = document.getElementById('checklist').value.trim();
+        
+        const links = linksValue.split('\n').filter(link => link.trim() !== '');
+        const checklistItems = checklistValue.split('\n')
+            .filter(item => item.trim() !== '')
+            .map(text => ({ text: text, done: false }));
+
+        const date = document.getElementById('openDate').value;
+        const startTime = document.getElementById('openTime').value;
+        const endTime = document.getElementById('endTime').value;
+
+        if (links.length === 0 || !date || !startTime || !endTime) {
+            alert("Vui lòng điền link bài học và thời gian!");
+            return;
+        }
+
+        const startDateTime = new Date(`${date}T${startTime}`);
+        const endDateTime = new Date(`${date}T${endTime}`);
+        
+        if (startDateTime >= endDateTime) {
+            alert("Lỗi: Giờ kết thúc phải sau giờ bắt đầu!");
+            return;
+        }
+        if (endDateTime < new Date()) {
+            alert("Lỗi: Không thể lên lịch cho một thời điểm trong quá khứ!");
+            return;
+        }
+
+        const newSchedule = {
+            id: 'schedule-' + Date.now(),
+            links: links,
+            notes: notes,
+            checklist: checklistItems,
+            startDateTimeString: startDateTime.toISOString(),
+            endDateTimeString: endDateTime.toISOString(),
+            status: 'waiting'
+        };
+
+        schedules.push(newSchedule);
+        
+        const timeToOpen = startDateTime.getTime() - new Date().getTime();
+        if (timeToOpen > 0) {
+            timeouts[newSchedule.id] = setTimeout(() => startSession(newSchedule.id), timeToOpen);
+        }
+
+        saveAndRender();
+        
+        ['studyLinks', 'notes', 'checklist', 'openDate', 'openTime', 'endTime'].forEach(id => document.getElementById(id).value = '');
+    }
+
+    function deleteSchedule(id) {
+        clearTimeout(timeouts[id]);
+        delete timeouts[id];
+
+        const scheduleIndex = schedules.findIndex(s => s.id === id);
+        if (scheduleIndex > -1) {
+            clearInterval(schedules[scheduleIndex].countdownInterval);
+            schedules.splice(scheduleIndex, 1);
+        }
+        
+        saveAndRender();
+    }
+    
+    function startSession(id) {
+        const schedule = schedules.find(s => s.id === id);
+        if (schedule && schedule.links) {
+            playSound(beginSoundUrl);
+            schedule.links.forEach(link => window.open(link, '_blank'));
+            schedule.status = 'running';
+            const duration = (new Date(schedule.endDateTimeString) - new Date()) / 1000;
+            if(duration > 0) startCountdown(id, duration);
+            saveAndRender();
+        }
+    }
+
+    function startCountdown(id, seconds) {
+        const schedule = schedules.find(s => s.id === id);
+        if (!schedule) return;
+
+        clearInterval(schedule.countdownInterval);
+        let timeLeft = Math.round(seconds);
+
+        updateCountdownDisplay(id, timeLeft); // Cập nhật ngay lập tức
+
+        schedule.countdownInterval = setInterval(() => {
+            timeLeft--;
+            updateCountdownDisplay(id, timeLeft);
+            
+            if (timeLeft <= 0) {
+                clearInterval(schedule.countdownInterval);
+                playSound(endSoundUrl);
+                schedule.status = 'done';
+                saveAndRender();
+            }
+        }, 1000);
+    }
+    
+    // === CÁC HÀM CẬP NHẬT GIAO DIỆN (ĐẦY ĐỦ) ===
+    function updateCountdownDisplay(id, timeLeft) {
+        const itemElement = document.getElementById(id);
+        if (!itemElement) return;
+        const statusElement = itemElement.querySelector('.status');
+        if (timeLeft <= 0) {
+            statusElement.innerHTML = "✅ Hoàn thành!";
+        } else {
+            const h = Math.floor(timeLeft / 3600).toString().padStart(2, '0');
+            const m = Math.floor((timeLeft % 3600) / 60).toString().padStart(2, '0');
+            const s = (timeLeft % 60).toString().padStart(2, '0');
+            itemElement.classList.add('running');
+            statusElement.innerHTML = `${h}:${m}:${s}`;
+        }
+    }
+
+    function renderSchedules() {
+        const listElement = document.getElementById('scheduleList');
+        listElement.innerHTML = '';
+        
+        schedules.sort((a, b) => new Date(a.startDateTimeString) - new Date(b.startDateTimeString));
+
+        if (schedules.length === 0) {
+            listElement.innerHTML = '<p style="text-align:center; color:#888;">Hãy bắt đầu lên kế hoạch học tập của bạn!</p>';
+            return;
+        }
+
+        schedules.forEach(schedule => {
+            const item = document.createElement('li');
+            item.className = 'schedule-item';
+            item.id = schedule.id;
+
+            const start = new Date(schedule.startDateTimeString);
+            const end = new Date(schedule.endDateTimeString);
+            const now = new Date();
+            
+            let statusHTML = '';
+            
+            if (schedule.status === 'running' && now < end) {
+                 item.classList.add('running');
+                 const remainingTime = (end.getTime() - now.getTime()) / 1000;
+                 startCountdown(schedule.id, remainingTime); // Khởi động lại countdown
+                 statusHTML = `<div class="status" style="color: #28a745;"></div>`;
+            } else if (schedule.status === 'done' || now >= end) {
+                schedule.status = 'done';
+                item.classList.add('done');
+                statusHTML = `<div class="status" style="color: #17a2b8;">✅ Hoàn thành!</div>`;
+            } else if (start < now) {
+                item.classList.add('expired');
+                statusHTML = `<div class="status" style="color: #6c757d;">Đã qua</div>`;
+            } else {
+                statusHTML = `<div class="status" style="color: var(--secondary-color);">Sắp tới</div>`;
+            }
+            
+            const firstLink = schedule.links[0] || "Không có link";
+            const otherLinksCount = schedule.links.length - 1;
+            const linkDisplay = otherLinksCount > 0 ? `${firstLink} (+${otherLinksCount})` : firstLink;
+
+            item.innerHTML = `
+                <div class="info">
+                    <div class="datetime">${start.toLocaleDateString('vi-VN')} | ${start.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}</div>
+                    <div class="links-summary" title="${schedule.links.join('\n')}">${linkDisplay}</div>
+                </div>
+                <div class="actions">
+                    ${statusHTML}
+                    <button class="action-btn" title="Xem chi tiết" onclick="showDetails('${schedule.id}')">👁️</button>
+                    <button class="action-btn delete-btn" title="Xóa" onclick="deleteSchedule('${schedule.id}')">X</button>
+                </div>
+            `;
+            listElement.appendChild(item);
+        });
+    }
+
+    // --- KHỞI CHẠY ---
+    document.addEventListener('DOMContentLoaded', () => {
+        setupAudioHandlers();
+        loadAndProcessSchedules();
+        window.onclick = function(event) {
+            if (event.target == document.getElementById('detailsModal')) {
+                closeModal();
+            }
+        }
+    });
+</script>
+
+</body>
+</html>
