@@ -60,7 +60,6 @@
             resize: vertical;
             min-height: 80px;
         }
-        input[type="file"] { padding: 5px; }
         button#addBtn {
             width: 100%;
             padding: 14px;
@@ -100,8 +99,6 @@
         .schedule-item .status { font-weight: bold; min-width: 100px; text-align: right; }
         .schedule-item .action-btn { background: none; border: 1px solid var(--border-color); border-radius: 50%; width: 32px; height: 32px; cursor: pointer; }
         .schedule-item .delete-btn { background-color: #dc3545; color: white; border: none; }
-        
-        /* === MODAL / POP-UP STYLE === */
         .modal {
             display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5);
             justify-content: center; align-items: center;
@@ -122,8 +119,6 @@
         .modal-body .checklist-item label { text-decoration: none; }
         .modal-body .checklist-item input:checked + label { text-decoration: line-through; color: #888; }
         @keyframes fadeIn { from {opacity: 0; transform: scale(0.9);} to {opacity: 1; transform: scale(1);} }
-        
-        /* === BACKUP SECTION === */
         .backup-section { margin-top: 25px; padding-top: 20px; border-top: 1px solid #eee; display: flex; gap: 15px; }
         .backup-section button { width: 100%; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 8px; border: none; }
         #exportBtn { background-color: #17a2b8; color: white; }
@@ -162,12 +157,12 @@
             <input type="time" id="endTime" required>
         </div>
         <div class="input-group">
-            <label for="beginSound">🎵 Âm báo bắt đầu:</label>
-            <input type="file" id="beginSound" accept="audio/*">
+            <label for="beginSoundUrl">🎵 Link âm báo bắt đầu:</label>
+            <input type="text" id="beginSoundUrl" placeholder="Dán link âm thanh .mp3, .wav...">
         </div>
         <div class="input-group">
-            <label for="endSound">🎵 Âm báo kết thúc:</label>
-            <input type="file" id="endSound" accept="audio/*">
+            <label for="endSoundUrl">🎵 Link âm báo kết thúc:</label>
+            <input type="text" id="endSoundUrl" placeholder="Dán link âm thanh .mp3, .wav...">
         </div>
         <button id="addBtn" onclick="addSchedule()">Thêm Lịch Học</button>
         
@@ -194,53 +189,33 @@
     </div>
 </div>
 
-
 <script>
     let schedules = [];
-    let schedulerWorker; // Biến để giữ Worker
+    let schedulerWorker;
 
     // === CÁC HÀM XỬ LÝ POP-UP (MODAL) ===
-    // (Giữ nguyên các hàm showDetails, closeModal, toggleChecklistItem)
     function showDetails(id) {
         const schedule = schedules.find(s => s.id === id);
         if (!schedule) return;
-
         const modal = document.getElementById('detailsModal');
         const modalBody = document.getElementById('modalBody');
-        
         const start = new Date(schedule.startDateTimeString);
         document.getElementById('modalTitle').innerText = `Lịch học ngày ${start.toLocaleDateString('vi-VN')}`;
-
         let linksHTML = '<h4>🔗 Links</h4><ul class="links-list">';
-        schedule.links.forEach(link => {
-            linksHTML += `<li><a href="${link}" target="_blank">${link}</a></li>`;
-        });
+        schedule.links.forEach(link => { linksHTML += `<li><a href="${link}" target="_blank">${link}</a></li>`; });
         linksHTML += '</ul>';
-
         const notesHTML = `<h4>📝 Ghi chú</h4><div class="notes">${schedule.notes || "Không có ghi chú."}</div>`;
-
         let checklistHTML = '<h4>✅ Checklist</h4><div class="checklist">';
         if (schedule.checklist && schedule.checklist.length > 0) {
             schedule.checklist.forEach((item, index) => {
-                checklistHTML += `
-                    <div class="checklist-item">
-                        <input type="checkbox" id="item-${id}-${index}" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem('${id}', ${index})">
-                        <label for="item-${id}-${index}">${item.text}</label>
-                    </div>`;
+                checklistHTML += `<div class="checklist-item"><input type="checkbox" id="item-${id}-${index}" ${item.done ? 'checked' : ''} onchange="toggleChecklistItem('${id}', ${index})"><label for="item-${id}-${index}">${item.text}</label></div>`;
             });
-        } else {
-            checklistHTML += "Không có checklist.";
-        }
+        } else { checklistHTML += "Không có checklist."; }
         checklistHTML += '</div>';
-
         modalBody.innerHTML = linksHTML + notesHTML + checklistHTML;
         modal.style.display = 'flex';
     }
-
-    function closeModal() {
-        document.getElementById('detailsModal').style.display = 'none';
-    }
-
+    function closeModal() { document.getElementById('detailsModal').style.display = 'none'; }
     function toggleChecklistItem(scheduleId, itemIndex) {
         const schedule = schedules.find(s => s.id === scheduleId);
         if (schedule && schedule.checklist[itemIndex]) {
@@ -249,82 +224,40 @@
         }
     }
 
-    // === CÁC HÀM XỬ LÝ ÂM THANH ===
-    // (Giữ nguyên các hàm setupAudioHandlers, playSound)
-    let beginSoundUrl = null;
-    let endSoundUrl = null;
-    function setupAudioHandlers() {
-        document.getElementById('beginSound').addEventListener('change', event => {
-            const file = event.target.files[0]; if (file) { if (beginSoundUrl) URL.revokeObjectURL(beginSoundUrl); beginSoundUrl = URL.createObjectURL(file); }
-        });
-        document.getElementById('endSound').addEventListener('change', event => {
-            const file = event.target.files[0]; if (file) { if (endSoundUrl) URL.revokeObjectURL(endSoundUrl); endSoundUrl = URL.createObjectURL(file); }
-        });
-    }
+    // === HÀM XỬ LÝ ÂM THANH ===
     function playSound(url) { if (url) { new Audio(url).play(); } }
 
-    // === LƯU TRỮ, TẢI, VÀ XỬ LÝ DỮ LIỆU (ĐÃ CẬP NHẬT ĐỂ DÙNG WORKER) ===
-    
-    // Hàm thiết lập Worker và lắng nghe tin nhắn
+    // === LƯU TRỮ, TẢI, VÀ XỬ LÝ DỮ LIỆU ===
     function setupWorker() {
         if (window.Worker) {
             schedulerWorker = new Worker('scheduler.worker.js');
-            
-            // Lắng nghe tin nhắn từ Worker
             schedulerWorker.onmessage = function(e) {
                 const scheduleId = e.data;
-                console.log(`Worker báo: đến giờ cho lịch học ${scheduleId}`);
-                startSession(scheduleId); // Gọi hàm startSession khi nhận được tin nhắn
+                startSession(scheduleId);
             };
         } else {
-            console.error("Trình duyệt của bạn không hỗ trợ Web Workers. Chức năng nền sẽ không hoạt động.");
             alert("Trình duyệt của bạn không hỗ trợ Web Workers, chức năng hẹn giờ ở tab khác sẽ không hoạt động.");
         }
     }
-
-    // Hàm gửi danh sách lịch học cập nhật cho Worker
-    function updateWorker() {
-        if (schedulerWorker) {
-            // Gửi một bản sao của danh sách lịch học để tránh lỗi
-            schedulerWorker.postMessage(JSON.parse(JSON.stringify(schedules)));
-        }
-    }
-
-    function saveSchedules() {
-        localStorage.setItem('mySmartScheduler', JSON.stringify(schedules));
-    }
-    
-    function saveAndRender() {
-        saveSchedules();
-        renderSchedules();
-        updateWorker(); // Cập nhật Worker mỗi khi có thay đổi
-    }
-
+    function updateWorker() { if (schedulerWorker) { schedulerWorker.postMessage(JSON.parse(JSON.stringify(schedules))); } }
+    function saveSchedules() { localStorage.setItem('mySmartScheduler', JSON.stringify(schedules)); }
+    function saveAndRender() { saveSchedules(); renderSchedules(); updateWorker(); }
     function loadAndProcessSchedules() {
         const savedSchedules = localStorage.getItem('mySmartScheduler');
         schedules = savedSchedules ? JSON.parse(savedSchedules) : [];
-        
-        // Dọn dẹp các timeout cũ (nếu có) và cập nhật trạng thái
-        // Việc này đảm bảo các lịch học đã qua sẽ được đánh dấu là "done"
         const now = new Date();
         schedules.forEach(schedule => {
-            const endDateTime = new Date(schedule.endDateTimeString);
-            if (schedule.status !== 'done' && now >= endDateTime) {
+            if (schedule.status !== 'done' && now >= new Date(schedule.endDateTimeString)) {
                 schedule.status = 'done';
             }
         });
-
         renderSchedules();
-        updateWorker(); // Gửi danh sách cho Worker khi tải trang
+        updateWorker();
     }
-    
     function exportSchedulesToFile() {
-        if (schedules.length === 0) {
-            alert("Không có lịch học nào để xuất!");
-            return;
-        }
+        if (schedules.length === 0) { alert("Không có lịch học nào để xuất!"); return; }
         const dataStr = JSON.stringify(schedules, null, 2);
-        const dataBlob = new Blob([dataStr], {type: "application/json"});
+        const dataBlob = new Blob([dataStr], { type: "application/json" });
         const url = URL.createObjectURL(dataBlob);
         const link = document.createElement('a');
         link.href = url;
@@ -332,7 +265,6 @@
         link.click();
         URL.revokeObjectURL(url);
     }
-
     function importSchedulesFromFile(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -342,51 +274,31 @@
                 const importedSchedules = JSON.parse(e.target.result);
                 if (Array.isArray(importedSchedules)) {
                     schedules = importedSchedules;
-                    saveSchedules(); // Lưu trước
-                    loadAndProcessSchedules(); // Sau đó xử lý và gửi cho worker
+                    saveSchedules();
+                    loadAndProcessSchedules();
                     alert(`Đã nhập thành công ${schedules.length} lịch học!`);
-                } else {
-                    throw new Error("Invalid format");
-                }
-            } catch (error) {
-                alert("Lỗi: File không hợp lệ hoặc bị hỏng.");
-            }
+                } else { throw new Error("Invalid format"); }
+            } catch (error) { alert("Lỗi: File không hợp lệ hoặc bị hỏng."); }
         };
         reader.readAsText(file);
         event.target.value = null;
     }
 
-    // === CÁC HÀM XỬ LÝ LỊCH HỌC (ĐÃ CẬP NHẬT) ===
+    // === CÁC HÀM XỬ LÝ LỊCH HỌC ===
     function addSchedule() {
-        const linksValue = document.getElementById('studyLinks').value.trim();
+        const links = document.getElementById('studyLinks').value.trim().split('\n').filter(link => link.trim() !== '');
         const notes = document.getElementById('notes').value.trim();
-        const checklistValue = document.getElementById('checklist').value.trim();
-        
-        const links = linksValue.split('\n').filter(link => link.trim() !== '');
-        const checklistItems = checklistValue.split('\n')
-            .filter(item => item.trim() !== '')
-            .map(text => ({ text: text, done: false }));
-
+        const checklistItems = document.getElementById('checklist').value.trim().split('\n').filter(item => item.trim() !== '').map(text => ({ text: text, done: false }));
         const date = document.getElementById('openDate').value;
         const startTime = document.getElementById('openTime').value;
         const endTime = document.getElementById('endTime').value;
+        const beginSound = document.getElementById('beginSoundUrl').value.trim();
+        const endSound = document.getElementById('endSoundUrl').value.trim();
 
-        if (links.length === 0 || !date || !startTime || !endTime) {
-            alert("Vui lòng điền link bài học và thời gian!");
-            return;
-        }
-
+        if (links.length === 0 || !date || !startTime || !endTime) { alert("Vui lòng điền link bài học và thời gian!"); return; }
         const startDateTime = new Date(`${date}T${startTime}`);
         const endDateTime = new Date(`${date}T${endTime}`);
-        
-        if (startDateTime >= endDateTime) {
-            alert("Lỗi: Giờ kết thúc phải sau giờ bắt đầu!");
-            return;
-        }
-        if (endDateTime < new Date()) {
-            alert("Lỗi: Không thể lên lịch cho một thời điểm trong quá khứ!");
-            return;
-        }
+        if (startDateTime >= endDateTime || endDateTime < new Date()) { alert("Lỗi: Thời gian không hợp lệ!"); return; }
 
         const newSchedule = {
             id: 'schedule-' + Date.now(),
@@ -395,38 +307,31 @@
             checklist: checklistItems,
             startDateTimeString: startDateTime.toISOString(),
             endDateTimeString: endDateTime.toISOString(),
-            status: 'waiting'
+            status: 'waiting',
+            beginSound: beginSound,
+            endSound: endSound
         };
 
         schedules.push(newSchedule);
-        
-        // ĐÃ XÓA setTimeout ở đây. Worker sẽ lo việc này.
-
         saveAndRender();
-        
-        ['studyLinks', 'notes', 'checklist', 'openDate', 'openTime', 'endTime'].forEach(id => document.getElementById(id).value = '');
+        ['studyLinks', 'notes', 'checklist', 'openDate', 'openTime', 'endTime', 'beginSoundUrl', 'endSoundUrl'].forEach(id => document.getElementById(id).value = '');
     }
 
     function deleteSchedule(id) {
-        // ĐÃ XÓA clearTimeout ở đây.
         const scheduleIndex = schedules.findIndex(s => s.id === id);
         if (scheduleIndex > -1) {
             clearInterval(schedules[scheduleIndex].countdownInterval);
             schedules.splice(scheduleIndex, 1);
         }
-        
         saveAndRender();
     }
     
     function startSession(id) {
         const schedule = schedules.find(s => s.id === id);
-        // Kiểm tra lại trạng thái để tránh mở lại các lịch đã hoàn thành
         if (schedule && schedule.status === 'waiting') {
-            playSound(beginSoundUrl);
+            playSound(schedule.beginSound);
             schedule.links.forEach(link => window.open(link, '_blank'));
             schedule.status = 'running';
-            const duration = (new Date(schedule.endDateTimeString) - new Date()) / 1000;
-            if(duration > 0) startCountdown(id, duration);
             saveAndRender();
         }
     }
@@ -434,32 +339,27 @@
     function startCountdown(id, seconds) {
         const schedule = schedules.find(s => s.id === id);
         if (!schedule) return;
-
         clearInterval(schedule.countdownInterval);
         let timeLeft = Math.round(seconds);
-
-        updateCountdownDisplay(id, timeLeft); 
-
+        updateCountdownDisplay(id, timeLeft);
         schedule.countdownInterval = setInterval(() => {
             timeLeft--;
             updateCountdownDisplay(id, timeLeft);
-            
             if (timeLeft <= 0) {
                 clearInterval(schedule.countdownInterval);
-                playSound(endSoundUrl);
+                playSound(schedule.endSound);
                 schedule.status = 'done';
-                saveAndRender(); // Cập nhật lại giao diện và gửi cho worker
+                saveAndRender();
             }
         }, 1000);
     }
     
-    // === CÁC HÀM CẬP NHẬT GIAO DIỆN (Giữ nguyên) ===
+    // === CÁC HÀM CẬP NHẬT GIAO DIỆN ===
     function updateCountdownDisplay(id, timeLeft) {
         const itemElement = document.getElementById(id);
         if (!itemElement) return;
         const statusElement = itemElement.querySelector('.status');
-        if(!statusElement) return; // Kiểm tra nếu status element không tồn tại
-
+        if(!statusElement) return;
         if (timeLeft <= 0) {
             statusElement.innerHTML = "✅ Hoàn thành!";
         } else {
@@ -476,94 +376,52 @@
     function renderSchedules() {
         const listElement = document.getElementById('scheduleList');
         listElement.innerHTML = '';
-        
         schedules.sort((a, b) => new Date(a.startDateTimeString) - new Date(b.startDateTimeString));
-
         if (schedules.length === 0) {
             listElement.innerHTML = '<p style="text-align:center; color:#888;">Hãy bắt đầu lên kế hoạch học tập của bạn!</p>';
             return;
         }
-
         schedules.forEach(schedule => {
             const item = document.createElement('li');
             item.className = 'schedule-item';
             item.id = schedule.id;
-
             const start = new Date(schedule.startDateTimeString);
             const end = new Date(schedule.endDateTimeString);
             const now = new Date();
-            
             let statusHTML = '';
-            
-            // Cập nhật trạng thái trước khi render
-            if (schedule.status !== 'done' && now >= end) {
-                schedule.status = 'done';
-            }
-
-            // Xóa hết các class trạng thái cũ
             item.classList.remove('running', 'done', 'expired');
-
-            if (schedule.status === 'running') {
-                 item.classList.add('running');
-                 const remainingTime = (end.getTime() - now.getTime()) / 1000;
-                 if (remainingTime > 0) {
-                    statusHTML = `<div class="status"></div>`; // Countdown sẽ điền vào đây
-                    startCountdown(schedule.id, remainingTime);
-                 } else {
-                    schedule.status = 'done'; // Chuyển sang done nếu đã hết giờ
-                 }
-            }
-            
-            if (schedule.status === 'done') {
+            if (schedule.status === 'running' || (schedule.status === 'waiting' && now >= start && now < end)) {
+                schedule.status = 'running';
+                item.classList.add('running');
+                const remainingTime = (end.getTime() - now.getTime()) / 1000;
+                statusHTML = `<div class="status"></div>`;
+                if (remainingTime > 0) startCountdown(schedule.id, remainingTime);
+            } else if (schedule.status === 'done' || now >= end) {
                 item.classList.add('done');
                 statusHTML = `<div class="status" style="color: #17a2b8;">✅ Hoàn thành!</div>`;
-            } else if (schedule.status === 'waiting' && start < now) {
+            } else if (start < now) {
                 item.classList.add('expired');
                 statusHTML = `<div class="status" style="color: #6c757d;">Đã qua</div>`;
-            } else if (schedule.status === 'waiting') {
+            } else {
                 statusHTML = `<div class="status" style="color: var(--secondary-color);">Sắp tới</div>`;
             }
-            
             const firstLink = schedule.links[0] || "Không có link";
             const otherLinksCount = schedule.links.length - 1;
             const linkDisplay = otherLinksCount > 0 ? `${firstLink} (+${otherLinksCount})` : firstLink;
-
-            item.innerHTML = `
-                <div class="info">
-                    <div class="datetime">${start.toLocaleDateString('vi-VN')} | ${start.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}</div>
-                    <div class="links-summary" title="${schedule.links.join('\n')}">${linkDisplay}</div>
-                </div>
-                <div class="actions">
-                    ${statusHTML}
-                    <button class="action-btn" title="Xem chi tiết" onclick="showDetails('${schedule.id}')">👁️</button>
-                    <button class="action-btn delete-btn" title="Xóa" onclick="deleteSchedule('${schedule.id}')">X</button>
-                </div>
-            `;
+            item.innerHTML = `<div class="info"><div class="datetime">${start.toLocaleDateString('vi-VN')} | ${start.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})} - ${end.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'})}</div><div class="links-summary" title="${schedule.links.join('\n')}">${linkDisplay}</div></div><div class="actions">${statusHTML}<button class="action-btn" title="Xem chi tiết" onclick="showDetails('${schedule.id}')">👁️</button><button class="action-btn delete-btn" title="Xóa" onclick="deleteSchedule('${schedule.id}')">X</button></div>`;
             listElement.appendChild(item);
-
-            // Kích hoạt lại countdown nếu cần
-            if (item.classList.contains('running')) {
-                const remainingTime = (end.getTime() - now.getTime()) / 1000;
-                if (remainingTime > 0) {
-                    startCountdown(schedule.id, remainingTime);
-                }
-            }
         });
     }
 
     // --- KHỞI CHẠY ---
     document.addEventListener('DOMContentLoaded', () => {
-        setupAudioHandlers();
-        setupWorker(); // Khởi tạo Worker
+        setupWorker();
         loadAndProcessSchedules();
         window.onclick = function(event) {
-            if (event.target == document.getElementById('detailsModal')) {
-                closeModal();
-            }
+            if (event.target == document.getElementById('detailsModal')) { closeModal(); }
         }
     });
 </script>
 
 </body>
-
 </html>
